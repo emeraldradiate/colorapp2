@@ -4,6 +4,7 @@ import babel from '@rolldown/plugin-babel'
 
 // https://vite.dev/config/
 export default defineConfig({
+  base: '/colorapp2/',
   plugins: [
     react(),
     babel({ presets: [reactCompilerPreset()] })
