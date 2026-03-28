@@ -4,6 +4,7 @@ import type { RGB } from './utils/types';
 import { ImageUpload } from './components/ImageUpload';
 import { ImageComparison } from './components/ImageComparison';
 import { ColorPalette } from './components/ColorPalette';
+import { PaletteInput } from './components/PaletteInput';
 
 const imageProcessor = new ImageProcessor();
 
@@ -21,6 +22,9 @@ function App() {
   const [originalColorCount, setOriginalColorCount] = useState<number>(0);
   const [cmykOnly, setCmykOnly] = useState<boolean>(false);
   const [lockedColors, setLockedColors] = useState<Set<number>>(new Set());
+  const [mode, setMode] = useState<'reduce' | 'swap' | 'palette'>('reduce');
+  const [customPaletteHexes, setCustomPaletteHexes] = useState<string[]>([]);
+  const [paletteMapDitheringStrength, setPaletteMapDitheringStrength] = useState<number>(0);
 
   const handleImageSelect = async (file: File) => {
     try {
@@ -137,6 +141,44 @@ function App() {
     }
   };
   
+  const exportPaletteAsJson = (pal: RGB[], filename: string) => {
+    const hexColors = pal.map((c) => imageProcessor.rgbToHex(c));
+    const json = JSON.stringify({ colors: hexColors }, null, 2);
+    const blob = new Blob([json], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = filename;
+    link.click();
+    URL.revokeObjectURL(url);
+  };
+
+  const handleApplyCustomPalette = () => {
+    if (!originalImageData || customPaletteHexes.length === 0) return;
+    try {
+      setIsProcessing(true);
+      const rgbPalette = customPaletteHexes
+        .map((hex) => imageProcessor.hexToRgb(hex))
+        .filter((c): c is RGB => c !== null);
+      if (rgbPalette.length === 0) {
+        alert('No valid colors in palette.');
+        return;
+      }
+      const result = imageProcessor.swapImageColors(originalImageData, rgbPalette, paletteMapDitheringStrength);
+      setReducedImageData(result);
+      const url = imageProcessor.imageDataToDataUrl(result);
+      setReducedImageUrl(url);
+      setPalette(rgbPalette);
+      setOriginalPalette(rgbPalette);
+      setLockedColors(new Set());
+    } catch (error) {
+      console.error('Error applying palette:', error);
+      alert('Failed to apply palette. Please try again.');
+    } finally {
+      setIsProcessing(false);
+    }
+  };
+
   const toggleColorSelection = (color: string) => {
     setSelectedColors((prev) => {
       if (prev.includes(color)) {
@@ -188,56 +230,182 @@ function App() {
           <div>
             {/* Control Panel */}
             <div className="bg-white rounded-lg shadow-md p-6 mb-8">
+              {/* Mode Switcher */}
+              <div className="flex gap-1 mb-6 bg-gray-100 rounded-lg p-1 w-fit">
+                <button
+                  onClick={() => setMode('reduce')}
+                  className={`px-4 py-2 rounded-md font-medium text-sm transition-colors ${
+                    mode === 'reduce'
+                      ? 'bg-white shadow text-purple-600'
+                      : 'text-gray-600 hover:text-gray-800'
+                  }`}
+                >
+                  Reduce Colors
+                </button>
+                <button
+                  onClick={() => setMode('swap')}
+                  disabled={originalPalette.length === 0}
+                  title={originalPalette.length === 0 ? 'Reduce colors first to enable swapping' : undefined}
+                  className={`px-4 py-2 rounded-md font-medium text-sm transition-colors ${
+                    mode === 'swap'
+                      ? 'bg-white shadow text-purple-600'
+                      : 'text-gray-600 hover:text-gray-800'
+                  } disabled:opacity-40 disabled:cursor-not-allowed`}
+                >
+                  Swap Colors
+                </button>
+                <button
+                  onClick={() => setMode('palette')}
+                  className={`px-4 py-2 rounded-md font-medium text-sm transition-colors ${
+                    mode === 'palette'
+                      ? 'bg-white shadow text-purple-600'
+                      : 'text-gray-600 hover:text-gray-800'
+                  }`}
+                >
+                  Map to Palette
+                </button>
+              </div>
+
               <div className="flex flex-col gap-4">
-                {/* Color Count Slider */}
-                <div className="flex items-center gap-4">
-                  <label className="text-sm font-medium text-gray-700 min-w-[140px]">
-                    Number of Colors:
-                  </label>
-                  <input
-                    type="range"
-                    min="2"
-                    max="64"
-                    value={colorCount}
-                    onChange={(e) => setColorCount(Number(e.target.value))}
-                    className="flex-1 max-w-xs accent-purple-600"
-                    disabled={isProcessing}
-                  />
-                  <span className="text-lg font-semibold text-purple-600 min-w-[3rem]">
-                    {colorCount}
-                  </span>
-                </div>
+                {/* Reduce Colors mode controls */}
+                {mode === 'reduce' && (
+                  <>
+                    {/* Color Count Slider */}
+                    <div className="flex items-center gap-4">
+                      <label className="text-sm font-medium text-gray-700 min-w-[140px]">
+                        Number of Colors:
+                      </label>
+                      <input
+                        type="range"
+                        min="2"
+                        max="64"
+                        value={colorCount}
+                        onChange={(e) => setColorCount(Number(e.target.value))}
+                        className="flex-1 max-w-xs accent-purple-600"
+                        disabled={isProcessing}
+                      />
+                      <span className="text-lg font-semibold text-purple-600 min-w-[3rem]">
+                        {colorCount}
+                      </span>
+                    </div>
 
-                {/* Dithering Slider */}
-                <div className="flex items-center gap-4">
-                  <label className="text-sm font-medium text-gray-700 min-w-[140px]">
-                    Dithering Strength:
-                  </label>
-                  <input
-                    type="range"
-                    min="0"
-                    max="1"
-                    step="0.05"
-                    value={ditheringStrength}
-                    onChange={(e) => setDitheringStrength(Number(e.target.value))}
-                    className="flex-1 max-w-xs accent-purple-600"
-                    disabled={isProcessing}
-                  />
-                  <span className="text-lg font-semibold text-purple-600 min-w-[3rem]">
-                    {Math.round(ditheringStrength * 100)}%
-                  </span>
-                </div>
+                    {/* Dithering Slider */}
+                    <div className="flex items-center gap-4">
+                      <label className="text-sm font-medium text-gray-700 min-w-[140px]">
+                        Dithering Strength:
+                      </label>
+                      <input
+                        type="range"
+                        min="0"
+                        max="1"
+                        step="0.05"
+                        value={ditheringStrength}
+                        onChange={(e) => setDitheringStrength(Number(e.target.value))}
+                        className="flex-1 max-w-xs accent-purple-600"
+                        disabled={isProcessing}
+                      />
+                      <span className="text-lg font-semibold text-purple-600 min-w-[3rem]">
+                        {Math.round(ditheringStrength * 100)}%
+                      </span>
+                    </div>
 
-                {/* Buttons */}
+                    {/* Reduce button */}
+                    <div className="flex justify-end">
+                      <button
+                        onClick={handleReduceColors}
+                        disabled={isProcessing}
+                        className="px-6 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 disabled:bg-gray-400 disabled:cursor-not-allowed transition-colors font-medium shadow-sm"
+                      >
+                        {isProcessing ? 'Processing...' : 'Reduce'}
+                      </button>
+                    </div>
+                  </>
+                )}
+
+                {/* Swap Colors mode controls */}
+                {mode === 'swap' && (
+                  <div className="flex flex-col gap-4">
+                    <h3 className="text-sm font-medium text-gray-700">
+                      Select Color Trends (up to 3)
+                    </h3>
+                    <div className="flex flex-wrap gap-3">
+                      {[
+                        { name: 'red', rgb: 'rgb(239, 68, 68)', emoji: '🔴' },
+                        { name: 'orange', rgb: 'rgb(249, 115, 22)', emoji: '🟠' },
+                        { name: 'yellow', rgb: 'rgb(234, 179, 8)', emoji: '🟡' },
+                        { name: 'green', rgb: 'rgb(34, 197, 94)', emoji: '🟢' },
+                        { name: 'cyan', rgb: 'rgb(6, 182, 212)', emoji: '🔵' },
+                        { name: 'blue', rgb: 'rgb(59, 130, 246)', emoji: '🔵' },
+                        { name: 'purple', rgb: 'rgb(168, 85, 247)', emoji: '🟣' },
+                        { name: 'pink', rgb: 'rgb(236, 72, 153)', emoji: '🩷' },
+                      ].map((color) => (
+                        <button
+                          key={color.name}
+                          onClick={() => toggleColorSelection(color.name)}
+                          disabled={isProcessing || (!selectedColors.includes(color.name) && selectedColors.length >= 3)}
+                          className={`
+                            px-4 py-2 rounded-lg font-medium transition-all shadow-sm
+                            ${selectedColors.includes(color.name)
+                              ? 'ring-2 ring-offset-2 ring-purple-600 scale-110'
+                              : 'hover:scale-105'
+                            }
+                            ${!selectedColors.includes(color.name) && selectedColors.length >= 3
+                              ? 'opacity-50 cursor-not-allowed'
+                              : 'cursor-pointer'
+                            }
+                          `}
+                          style={{
+                            backgroundColor: selectedColors.includes(color.name) ? color.rgb : 'white',
+                            border: `2px solid ${color.rgb}`,
+                            color: selectedColors.includes(color.name) ? 'white' : color.rgb,
+                          }}
+                          title={color.name}
+                        >
+                          <span className="text-lg mr-1">{color.emoji}</span>
+                          {color.name.charAt(0).toUpperCase() + color.name.slice(1)}
+                        </button>
+                      ))}
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <input
+                        type="checkbox"
+                        id="cmyk-only"
+                        checked={cmykOnly}
+                        onChange={(e) => setCmykOnly(e.target.checked)}
+                        className="w-4 h-4 accent-purple-600 cursor-pointer"
+                        disabled={isProcessing}
+                      />
+                      <label htmlFor="cmyk-only" className="text-sm font-medium text-gray-700 cursor-pointer">
+                        🖨️ CMYK-Safe Colors Only (for printing)
+                      </label>
+                    </div>
+                    <div className="flex justify-end">
+                      <button
+                        onClick={handleSwapColors}
+                        disabled={isProcessing}
+                        className="px-8 py-3 bg-purple-600 text-white rounded-lg hover:bg-purple-700 disabled:bg-gray-400 disabled:cursor-not-allowed transition-colors font-medium shadow-md text-lg"
+                      >
+                        {isProcessing ? 'Swapping...' : `🎨 Swap Colors${selectedColors.length > 0 ? ` (${selectedColors.length} trend${selectedColors.length > 1 ? 's' : ''})` : ' (Random)'}`}
+                      </button>
+                    </div>
+                  </div>
+                )}
+
+                {/* Map to Palette mode controls */}
+                {mode === 'palette' && (
+                  <PaletteInput
+                    colors={customPaletteHexes}
+                    onChange={setCustomPaletteHexes}
+                    ditheringStrength={paletteMapDitheringStrength}
+                    onDitheringChange={setPaletteMapDitheringStrength}
+                    onApply={handleApplyCustomPalette}
+                    isProcessing={isProcessing}
+                    disabled={!originalImageData}
+                  />
+                )}
+
+                {/* Shared action buttons */}
                 <div className="flex justify-end gap-3 mt-2">
-                  <button
-                    onClick={handleReduceColors}
-                    disabled={isProcessing}
-                    className="px-6 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 disabled:bg-gray-400 disabled:cursor-not-allowed transition-colors font-medium shadow-sm"
-                  >
-                    {isProcessing ? 'Processing...' : 'Reduce'}
-                  </button>
-
                   {reducedImageUrl && (
                     <>
                       <button
@@ -247,7 +415,7 @@ function App() {
                       >
                         ⬇️
                       </button>
-                      
+
                       <button
                         onClick={handleCopyToClipboard}
                         title="Copy to Clipboard"
@@ -286,77 +454,19 @@ function App() {
               reducedColorCount={palette.length}
             />
 
-            {/* Swap Colors Section */}
-            {reducedImageUrl && (
-              <div className="bg-white rounded-lg shadow-md p-6 mt-8">
-                <h3 className="text-lg font-semibold mb-4 text-gray-800 text-center">
-                  Select Color Trends (up to 3)
-                </h3>
-                <div className="flex flex-wrap justify-center gap-3 mb-6">
-                  {[
-                    { name: 'red', rgb: 'rgb(239, 68, 68)', emoji: '🔴' },
-                    { name: 'orange', rgb: 'rgb(249, 115, 22)', emoji: '🟠' },
-                    { name: 'yellow', rgb: 'rgb(234, 179, 8)', emoji: '🟡' },
-                    { name: 'green', rgb: 'rgb(34, 197, 94)', emoji: '🟢' },
-                    { name: 'cyan', rgb: 'rgb(6, 182, 212)', emoji: '🔵' },
-                    { name: 'blue', rgb: 'rgb(59, 130, 246)', emoji: '🔵' },
-                    { name: 'purple', rgb: 'rgb(168, 85, 247)', emoji: '🟣' },
-                    { name: 'pink', rgb: 'rgb(236, 72, 153)', emoji: '🩷' },
-                  ].map((color) => (
-                    <button
-                      key={color.name}
-                      onClick={() => toggleColorSelection(color.name)}
-                      disabled={isProcessing || (!selectedColors.includes(color.name) && selectedColors.length >= 3)}
-                      className={`
-                        px-4 py-2 rounded-lg font-medium transition-all shadow-sm
-                        ${selectedColors.includes(color.name)
-                          ? 'ring-2 ring-offset-2 ring-purple-600 scale-110'
-                          : 'hover:scale-105'
-                        }
-                        ${!selectedColors.includes(color.name) && selectedColors.length >= 3
-                          ? 'opacity-50 cursor-not-allowed'
-                          : 'cursor-pointer'
-                        }
-                      `}
-                      style={{
-                        backgroundColor: selectedColors.includes(color.name) ? color.rgb : 'white',
-                        border: `2px solid ${color.rgb}`,
-                        color: selectedColors.includes(color.name) ? 'white' : color.rgb,
-                      }}
-                      title={color.name}
-                    >
-                      <span className="text-lg mr-1">{color.emoji}</span>
-                      {color.name.charAt(0).toUpperCase() + color.name.slice(1)}
-                    </button>
-                  ))}
-                </div>
-                <div className="flex items-center justify-center gap-2 mb-4">
-                  <input
-                    type="checkbox"
-                    id="cmyk-only"
-                    checked={cmykOnly}
-                    onChange={(e) => setCmykOnly(e.target.checked)}
-                    className="w-4 h-4 accent-purple-600 cursor-pointer"
-                    disabled={isProcessing}
-                  />
-                  <label htmlFor="cmyk-only" className="text-sm font-medium text-gray-700 cursor-pointer">
-                    🖨️ CMYK-Safe Colors Only (for printing)
-                  </label>
-                </div>
-                <button
-                  onClick={handleSwapColors}
-                  disabled={isProcessing}
-                  className="w-full px-8 py-3 bg-purple-600 text-white rounded-lg hover:bg-purple-700 disabled:bg-gray-400 disabled:cursor-not-allowed transition-colors font-medium shadow-md text-lg"
-                >
-                  {isProcessing ? 'Swapping...' : `🎨 Swap Colors${selectedColors.length > 0 ? ` (${selectedColors.length} trend${selectedColors.length > 1 ? 's' : ''})` : ' (Random)'}`}
-                </button>
-              </div>
-            )}
-
             {/* Color Palettes */}
             {originalPalette.length > 0 && (
               <div className="bg-white rounded-lg shadow-md p-6 mt-8">
-                <h3 className="text-xl font-semibold mb-4 text-gray-800">Color Palette</h3>
+                <div className="flex items-center justify-between mb-4">
+                  <h3 className="text-xl font-semibold text-gray-800">Color Palette</h3>
+                  <button
+                    onClick={() => exportPaletteAsJson(originalPalette, 'palette.json')}
+                    className="px-3 py-1.5 text-sm font-medium border-2 border-gray-300 text-gray-600 rounded-lg hover:border-purple-400 hover:text-purple-600 transition-colors"
+                    title="Export palette as JSON"
+                  >
+                    ⬇️ Export JSON
+                  </button>
+                </div>
                 <p className="text-sm text-gray-600 mb-3">Click a color to lock/unlock it during swaps</p>
                 <ColorPalette 
                   palette={originalPalette} 
@@ -368,7 +478,16 @@ function App() {
 
             {palette.length > 0 && JSON.stringify(palette) !== JSON.stringify(originalPalette) && (
               <div className="bg-white rounded-lg shadow-md p-6 mt-4">
-                <h3 className="text-xl font-semibold mb-4 text-purple-600">Swapped Palette</h3>
+                <div className="flex items-center justify-between mb-4">
+                  <h3 className="text-xl font-semibold text-purple-600">Swapped Palette</h3>
+                  <button
+                    onClick={() => exportPaletteAsJson(palette, 'swapped-palette.json')}
+                    className="px-3 py-1.5 text-sm font-medium border-2 border-gray-300 text-gray-600 rounded-lg hover:border-purple-400 hover:text-purple-600 transition-colors"
+                    title="Export swapped palette as JSON"
+                  >
+                    ⬇️ Export JSON
+                  </button>
+                </div>
                 <p className="text-sm text-gray-600 mb-3">Click a color to lock/unlock it during swaps</p>
                 <ColorPalette 
                   palette={palette} 

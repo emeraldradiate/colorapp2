@@ -124,6 +124,22 @@ export class ImageProcessor {
   }
 
   /**
+   * Convert hex string to RGB color
+   * @param hex - Hex color string (with or without #)
+   * @returns RGB color object, or null if invalid
+   */
+  hexToRgb(hex: string): RGB | null {
+    const result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
+    if (!result) return null;
+    return {
+      r: parseInt(result[1], 16),
+      g: parseInt(result[2], 16),
+      b: parseInt(result[3], 16),
+      a: 255,
+    };
+  }
+
+  /**
    * Convert RGB color to hex string
    * @param color - RGB color object
    * @returns Hex color string
