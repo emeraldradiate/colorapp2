@@ -14,7 +14,7 @@ export function ImageComparison({ originalUrl, reducedUrl, originalColorCount, r
         <h3 className="text-lg font-semibold mb-3 text-gray-800">
           Original Image{originalColorCount ? ` (${originalColorCount.toLocaleString()} colors)` : ''}
         </h3>
-        <div className="border border-gray-200 rounded-lg overflow-hidden shadow-md bg-white">
+        <div className="border border-gray-200 rounded-lg overflow-hidden shadow-md bg-checkerboard">
           <img
             src={originalUrl}
             alt="Original"
@@ -28,7 +28,7 @@ export function ImageComparison({ originalUrl, reducedUrl, originalColorCount, r
           <h3 className="text-lg font-semibold mb-3 text-gray-800">
             New Image{reducedColorCount ? ` (${reducedColorCount} colors)` : ''}
           </h3>
-          <div className="border border-gray-200 rounded-lg overflow-hidden shadow-md bg-white">
+          <div className="border border-gray-200 rounded-lg overflow-hidden shadow-md bg-checkerboard">
             <img
               src={reducedUrl}
               alt="Reduced"

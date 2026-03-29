@@ -54,18 +54,21 @@ export class KMeansCluster {
 
     // Map each pixel to nearest palette color
     for (let i = 0; i < newImageData.data.length; i += 4) {
+      const alpha = newImageData.data[i + 3];
+      if (alpha === 0) continue; // skip fully transparent pixels
+
       const pixel: RGB = {
         r: newImageData.data[i],
         g: newImageData.data[i + 1],
         b: newImageData.data[i + 2],
-        a: newImageData.data[i + 3],
+        a: alpha,
       };
 
       const nearestColor = this.findNearestColor(pixel, palette);
       newImageData.data[i] = nearestColor.r;
       newImageData.data[i + 1] = nearestColor.g;
       newImageData.data[i + 2] = nearestColor.b;
-      newImageData.data[i + 3] = nearestColor.a;
+      // preserve original alpha
     }
 
     return newImageData;
@@ -96,20 +99,22 @@ export class KMeansCluster {
       for (let x = 0; x < width; x++) {
         const index = (y * width + x) * 4;
 
+        const alpha = newImageData.data[index + 3];
+        if (alpha === 0) continue; // skip fully transparent pixels
+
         const oldPixel: RGB = {
           r: newImageData.data[index],
           g: newImageData.data[index + 1],
           b: newImageData.data[index + 2],
-          a: newImageData.data[index + 3],
+          a: alpha,
         };
 
         const newPixel = this.findNearestColor(oldPixel, palette);
 
-        // Set the new color
+        // Set the new color, preserving original alpha
         newImageData.data[index] = newPixel.r;
         newImageData.data[index + 1] = newPixel.g;
         newImageData.data[index + 2] = newPixel.b;
-        newImageData.data[index + 3] = newPixel.a;
 
         // Calculate quantization error
         const errorR = (oldPixel.r - newPixel.r) * strength;
@@ -173,6 +178,7 @@ export class KMeansCluster {
     // Use all pixels for small images
     if (totalPixels <= maxPixels) {
       for (let i = 0; i < imageData.data.length; i += 4) {
+        if (imageData.data[i + 3] === 0) continue; // skip fully transparent pixels
         pixels.push({
           r: imageData.data[i],
           g: imageData.data[i + 1],
@@ -186,6 +192,7 @@ export class KMeansCluster {
       for (let y = 0; y < imageData.height; y += step) {
         for (let x = 0; x < imageData.width; x += step) {
           const index = (y * imageData.width + x) * 4;
+          if (imageData.data[index + 3] === 0) continue; // skip fully transparent pixels
           pixels.push({
             r: imageData.data[index],
             g: imageData.data[index + 1],

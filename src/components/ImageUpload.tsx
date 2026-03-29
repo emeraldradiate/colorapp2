@@ -30,20 +30,29 @@ export function ImageUpload({ onImageSelect }: ImageUploadProps) {
     const items = e.clipboardData?.items;
     if (!items) return;
 
+    // Prefer image/png (preserves alpha) over other image formats
+    let pngItem: DataTransferItem | null = null;
+    let fallbackItem: DataTransferItem | null = null;
+
     for (let i = 0; i < items.length; i++) {
       const item = items[i];
-      if (item.type.startsWith('image/')) {
-        const blob = item.getAsFile();
-        if (blob) {
-          // Create a File from the Blob with a default name
-          const file = new File([blob], `pasted-image-${Date.now()}.png`, {
-            type: blob.type,
-          });
-          onImageSelect(file);
-          e.preventDefault();
-          break;
-        }
+      if (item.type === 'image/png') {
+        pngItem = item;
+      } else if (!fallbackItem && item.type.startsWith('image/')) {
+        fallbackItem = item;
       }
+    }
+
+    const selectedItem = pngItem ?? fallbackItem;
+    if (!selectedItem) return;
+
+    const blob = selectedItem.getAsFile();
+    if (blob) {
+      const file = new File([blob], `pasted-image-${Date.now()}.png`, {
+        type: blob.type || 'image/png',
+      });
+      onImageSelect(file);
+      e.preventDefault();
     }
   };
 
