@@ -55,20 +55,27 @@ export class KMeansCluster {
     // Map each pixel to nearest palette color
     for (let i = 0; i < newImageData.data.length; i += 4) {
       const alpha = newImageData.data[i + 3];
-      if (alpha === 0) continue; // skip fully transparent pixels
+      if (alpha < 128) {
+        // Snap to fully transparent
+        newImageData.data[i] = 0;
+        newImageData.data[i + 1] = 0;
+        newImageData.data[i + 2] = 0;
+        newImageData.data[i + 3] = 0;
+        continue;
+      }
 
       const pixel: RGB = {
         r: newImageData.data[i],
         g: newImageData.data[i + 1],
         b: newImageData.data[i + 2],
-        a: alpha,
+        a: 255,
       };
 
       const nearestColor = this.findNearestColor(pixel, palette);
       newImageData.data[i] = nearestColor.r;
       newImageData.data[i + 1] = nearestColor.g;
       newImageData.data[i + 2] = nearestColor.b;
-      // preserve original alpha
+      newImageData.data[i + 3] = 255; // fully opaque
     }
 
     return newImageData;
@@ -100,21 +107,29 @@ export class KMeansCluster {
         const index = (y * width + x) * 4;
 
         const alpha = newImageData.data[index + 3];
-        if (alpha === 0) continue; // skip fully transparent pixels
+        if (alpha < 128) {
+          // Snap to fully transparent
+          newImageData.data[index] = 0;
+          newImageData.data[index + 1] = 0;
+          newImageData.data[index + 2] = 0;
+          newImageData.data[index + 3] = 0;
+          continue;
+        }
 
         const oldPixel: RGB = {
           r: newImageData.data[index],
           g: newImageData.data[index + 1],
           b: newImageData.data[index + 2],
-          a: alpha,
+          a: 255,
         };
 
         const newPixel = this.findNearestColor(oldPixel, palette);
 
-        // Set the new color, preserving original alpha
+        // Set the new color, fully opaque
         newImageData.data[index] = newPixel.r;
         newImageData.data[index + 1] = newPixel.g;
         newImageData.data[index + 2] = newPixel.b;
+        newImageData.data[index + 3] = 255;
 
         // Calculate quantization error
         const errorR = (oldPixel.r - newPixel.r) * strength;
@@ -178,12 +193,12 @@ export class KMeansCluster {
     // Use all pixels for small images
     if (totalPixels <= maxPixels) {
       for (let i = 0; i < imageData.data.length; i += 4) {
-        if (imageData.data[i + 3] === 0) continue; // skip fully transparent pixels
+        if (imageData.data[i + 3] < 128) continue; // skip transparent pixels
         pixels.push({
           r: imageData.data[i],
           g: imageData.data[i + 1],
           b: imageData.data[i + 2],
-          a: imageData.data[i + 3],
+          a: 255,
         });
       }
     } else {
@@ -192,12 +207,12 @@ export class KMeansCluster {
       for (let y = 0; y < imageData.height; y += step) {
         for (let x = 0; x < imageData.width; x += step) {
           const index = (y * imageData.width + x) * 4;
-          if (imageData.data[index + 3] === 0) continue; // skip fully transparent pixels
+          if (imageData.data[index + 3] < 128) continue; // skip transparent pixels
           pixels.push({
             r: imageData.data[index],
             g: imageData.data[index + 1],
             b: imageData.data[index + 2],
-            a: imageData.data[index + 3],
+            a: 255,
           });
         }
       }
@@ -292,7 +307,7 @@ export class KMeansCluster {
         r: Math.round(sum.r / count),
         g: Math.round(sum.g / count),
         b: Math.round(sum.b / count),
-        a: Math.round(sum.a / count),
+        a: 255,
       };
     });
   }
