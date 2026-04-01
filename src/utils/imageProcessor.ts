@@ -361,7 +361,78 @@ export class ImageProcessor {
   }
 
   /**
-   * Apply a new palette to an existing reduced image
+   * Get all unique non-transparent colors in an image
+   */
+  private getUniqueColors(imageData: ImageData): RGB[] {
+    const colorSet = new Set<string>();
+    const colors: RGB[] = [];
+
+    for (let i = 0; i < imageData.data.length; i += 4) {
+      if (imageData.data[i + 3] === 0) continue;
+      const key = `${imageData.data[i]},${imageData.data[i + 1]},${imageData.data[i + 2]}`;
+      if (!colorSet.has(key)) {
+        colorSet.add(key);
+        colors.push({
+          r: imageData.data[i],
+          g: imageData.data[i + 1],
+          b: imageData.data[i + 2],
+          a: imageData.data[i + 3],
+        });
+      }
+    }
+
+    return colors;
+  }
+
+  /**
+   * Build a 1:1 color mapping from image colors to palette colors based on luminance.
+   * Each image color is matched to the palette color with the closest luminance,
+   * without reusing any palette color.
+   */
+  private buildLuminanceMapping(imageColors: RGB[], palette: RGB[]): Map<string, RGB> {
+    const lumOf = (c: RGB) => this.rgbToGrayscale(c);
+
+    // Sort image colors by luminance
+    const sortedImageColors = [...imageColors].sort(
+      (a, b) => lumOf(a) - lumOf(b)
+    );
+
+    // Create palette entries with original indices so we can mark them as used
+    const paletteEntries = palette.map((c, i) => ({ color: c, lum: lumOf(c), index: i }));
+    paletteEntries.sort((a, b) => a.lum - b.lum);
+
+    const usedIndices = new Set<number>();
+    const colorMap = new Map<string, RGB>();
+
+    for (const imgColor of sortedImageColors) {
+      const imgLum = lumOf(imgColor);
+      let bestIdx = -1;
+      let bestDist = Infinity;
+
+      for (let i = 0; i < paletteEntries.length; i++) {
+        if (usedIndices.has(i)) continue;
+        const dist = Math.abs(paletteEntries[i].lum - imgLum);
+        if (dist < bestDist) {
+          bestDist = dist;
+          bestIdx = i;
+        }
+      }
+
+      if (bestIdx !== -1) {
+        usedIndices.add(bestIdx);
+        const key = `${imgColor.r},${imgColor.g},${imgColor.b}`;
+        colorMap.set(key, paletteEntries[bestIdx].color);
+      }
+    }
+
+    return colorMap;
+  }
+
+  /**
+   * Apply a new palette to an existing reduced image.
+   * When the image has fewer unique colors than the palette, uses luminance-based
+   * 1:1 mapping so each image color gets a distinct palette color matched by brightness.
+   * Otherwise falls back to standard nearest-color mapping.
    * @param originalImageData - Original unreduced image data
    * @param newPalette - New palette to apply
    * @param ditheringStrength - Strength of dithering (0 = none, 1 = full). Default is 0.
@@ -372,6 +443,34 @@ export class ImageProcessor {
     newPalette: RGB[],
     ditheringStrength: number = 0
   ): ImageData {
+    const uniqueColors = this.getUniqueColors(originalImageData);
+
+    // If image has fewer (or equal) unique colors than the palette,
+    // use luminance-based 1:1 mapping for a cleaner result
+    if (uniqueColors.length > 0 && uniqueColors.length <= newPalette.length) {
+      const colorMap = this.buildLuminanceMapping(uniqueColors, newPalette);
+
+      const newImageData = new ImageData(
+        new Uint8ClampedArray(originalImageData.data),
+        originalImageData.width,
+        originalImageData.height
+      );
+
+      for (let i = 0; i < newImageData.data.length; i += 4) {
+        if (newImageData.data[i + 3] === 0) continue;
+        const key = `${newImageData.data[i]},${newImageData.data[i + 1]},${newImageData.data[i + 2]}`;
+        const mapped = colorMap.get(key);
+        if (mapped) {
+          newImageData.data[i] = mapped.r;
+          newImageData.data[i + 1] = mapped.g;
+          newImageData.data[i + 2] = mapped.b;
+        }
+      }
+
+      return newImageData;
+    }
+
+    // Fallback: standard nearest-color mapping
     return this.quantizer.applyPalette(originalImageData, newPalette, ditheringStrength);
   }
 }
