@@ -1,6 +1,6 @@
 import { useRef } from 'react';
 
-const MAX_COLORS = 12;
+const MAX_COLORS = 100;
 
 interface PaletteInputProps {
   colors: string[];
