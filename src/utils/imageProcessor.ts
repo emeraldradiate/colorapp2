@@ -386,43 +386,29 @@ export class ImageProcessor {
 
   /**
    * Build a 1:1 color mapping from image colors to palette colors based on luminance.
-   * Each image color is matched to the palette color with the closest luminance,
-   * without reusing any palette color.
+   * Maps colors in luminance order: darkest image color → darkest palette color,
+   * lightest → lightest, ensuring brightness relationships are preserved.
    */
   private buildLuminanceMapping(imageColors: RGB[], palette: RGB[]): Map<string, RGB> {
     const lumOf = (c: RGB) => this.rgbToGrayscale(c);
 
-    // Sort image colors by luminance
+    // Sort image colors by luminance (darkest to lightest)
     const sortedImageColors = [...imageColors].sort(
       (a, b) => lumOf(a) - lumOf(b)
     );
 
-    // Create palette entries with original indices so we can mark them as used
-    const paletteEntries = palette.map((c, i) => ({ color: c, lum: lumOf(c), index: i }));
-    paletteEntries.sort((a, b) => a.lum - b.lum);
+    // Sort palette colors by luminance (darkest to lightest)
+    const sortedPalette = [...palette].sort(
+      (a, b) => lumOf(a) - lumOf(b)
+    );
 
-    const usedIndices = new Set<number>();
+    // Map them in order: darkest to darkest, lightest to lightest
     const colorMap = new Map<string, RGB>();
-
-    for (const imgColor of sortedImageColors) {
-      const imgLum = lumOf(imgColor);
-      let bestIdx = -1;
-      let bestDist = Infinity;
-
-      for (let i = 0; i < paletteEntries.length; i++) {
-        if (usedIndices.has(i)) continue;
-        const dist = Math.abs(paletteEntries[i].lum - imgLum);
-        if (dist < bestDist) {
-          bestDist = dist;
-          bestIdx = i;
-        }
-      }
-
-      if (bestIdx !== -1) {
-        usedIndices.add(bestIdx);
-        const key = `${imgColor.r},${imgColor.g},${imgColor.b}`;
-        colorMap.set(key, paletteEntries[bestIdx].color);
-      }
+    for (let i = 0; i < sortedImageColors.length; i++) {
+      const imgColor = sortedImageColors[i];
+      const paletteColor = sortedPalette[i];
+      const key = `${imgColor.r},${imgColor.g},${imgColor.b}`;
+      colorMap.set(key, paletteColor);
     }
 
     return colorMap;
