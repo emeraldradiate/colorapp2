@@ -386,29 +386,42 @@ export class ImageProcessor {
 
   /**
    * Build a 1:1 color mapping from image colors to palette colors based on luminance.
-   * Maps colors in luminance order: darkest image color → darkest palette color,
-   * lightest → lightest, ensuring brightness relationships are preserved.
+   * Each image color maps to the palette color with the closest luminance value,
+   * ensuring no palette color is reused (1:1 mapping).
    */
   private buildLuminanceMapping(imageColors: RGB[], palette: RGB[]): Map<string, RGB> {
     const lumOf = (c: RGB) => this.rgbToGrayscale(c);
 
-    // Sort image colors by luminance (darkest to lightest)
-    const sortedImageColors = [...imageColors].sort(
-      (a, b) => lumOf(a) - lumOf(b)
-    );
+    // Calculate luminance for all palette colors
+    const paletteWithLum = palette.map((color, index) => ({
+      color,
+      lum: lumOf(color),
+      index
+    }));
 
-    // Sort palette colors by luminance (darkest to lightest)
-    const sortedPalette = [...palette].sort(
-      (a, b) => lumOf(a) - lumOf(b)
-    );
-
-    // Map them in order: darkest to darkest, lightest to lightest
+    const usedIndices = new Set<number>();
     const colorMap = new Map<string, RGB>();
-    for (let i = 0; i < sortedImageColors.length; i++) {
-      const imgColor = sortedImageColors[i];
-      const paletteColor = sortedPalette[i];
-      const key = `${imgColor.r},${imgColor.g},${imgColor.b}`;
-      colorMap.set(key, paletteColor);
+
+    // For each image color, find the closest available palette color by luminance
+    for (const imgColor of imageColors) {
+      const imgLum = lumOf(imgColor);
+      let bestIdx = -1;
+      let bestDist = Infinity;
+
+      for (let i = 0; i < paletteWithLum.length; i++) {
+        if (usedIndices.has(i)) continue;
+        const dist = Math.abs(paletteWithLum[i].lum - imgLum);
+        if (dist < bestDist) {
+          bestDist = dist;
+          bestIdx = i;
+        }
+      }
+
+      if (bestIdx !== -1) {
+        usedIndices.add(bestIdx);
+        const key = `${imgColor.r},${imgColor.g},${imgColor.b}`;
+        colorMap.set(key, paletteWithLum[bestIdx].color);
+      }
     }
 
     return colorMap;
