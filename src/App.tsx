@@ -25,6 +25,7 @@ function App() {
   const [mode, setMode] = useState<'reduce' | 'swap' | 'palette'>('reduce');
   const [customPaletteHexes, setCustomPaletteHexes] = useState<string[]>([]);
   const [paletteMapDitheringStrength, setPaletteMapDitheringStrength] = useState<number>(0);
+  const [brightnessAdjustment, setBrightnessAdjustment] = useState<number>(0);
 
   const handleImageSelect = async (file: File) => {
     try {
@@ -45,6 +46,7 @@ function App() {
       setPalette([]);
       setOriginalPalette([]);
       setLockedColors(new Set());
+      setBrightnessAdjustment(0);
     } catch (error) {
       console.error('Error loading image:', error);
       alert('Failed to load image. Please try another file.');
@@ -164,7 +166,13 @@ function App() {
         alert('No valid colors in palette.');
         return;
       }
-      const result = imageProcessor.swapImageColors(originalImageData, rgbPalette, paletteMapDitheringStrength);
+      
+      // Apply brightness adjustment to the original image if needed
+      const imageToProcess = brightnessAdjustment !== 0
+        ? imageProcessor.adjustBrightness(originalImageData, brightnessAdjustment)
+        : originalImageData;
+      
+      const result = imageProcessor.swapImageColors(imageToProcess, rgbPalette, paletteMapDitheringStrength);
       setReducedImageData(result);
       const url = imageProcessor.imageDataToDataUrl(result);
       setReducedImageUrl(url);
@@ -435,6 +443,7 @@ function App() {
                       setPalette([]);
                       setOriginalPalette([]);
                       setOriginalColorCount(0);
+                      setBrightnessAdjustment(0);
                     }}
                     title="New Image"
                     className="px-4 py-2 bg-white text-gray-700 border-2 border-gray-300 rounded-lg hover:border-purple-400 hover:text-purple-600 transition-colors font-medium shadow-sm text-xl"
@@ -452,6 +461,12 @@ function App() {
               reducedUrl={reducedImageUrl}
               originalColorCount={originalColorCount}
               reducedColorCount={palette.length}
+              brightnessAdjustment={brightnessAdjustment}
+              onBrightnessChange={setBrightnessAdjustment}
+              mode={mode}
+              originalImageData={originalImageData}
+              imageProcessor={imageProcessor}
+              isProcessing={isProcessing}
             />
 
             {/* Color Palettes */}

@@ -472,4 +472,34 @@ export class ImageProcessor {
     // Fallback: standard nearest-color mapping
     return this.quantizer.applyPalette(originalImageData, newPalette, ditheringStrength);
   }
+
+  /**
+   * Adjust the brightness of an image
+   * @param imageData - Original image data
+   * @param adjustment - Brightness adjustment value (-100 to 100)
+   *                     Negative values darken, positive values brighten
+   * @returns New image data with adjusted brightness
+   */
+  adjustBrightness(imageData: ImageData, adjustment: number): ImageData {
+    const newImageData = new ImageData(
+      new Uint8ClampedArray(imageData.data),
+      imageData.width,
+      imageData.height
+    );
+
+    // Normalize adjustment to -255 to 255 range
+    const adjustValue = (adjustment / 100) * 255;
+
+    for (let i = 0; i < newImageData.data.length; i += 4) {
+      // Skip transparent pixels
+      if (newImageData.data[i + 3] === 0) continue;
+
+      // Adjust RGB channels, clamping to 0-255 range
+      newImageData.data[i] = Math.max(0, Math.min(255, newImageData.data[i] + adjustValue));
+      newImageData.data[i + 1] = Math.max(0, Math.min(255, newImageData.data[i + 1] + adjustValue));
+      newImageData.data[i + 2] = Math.max(0, Math.min(255, newImageData.data[i + 2] + adjustValue));
+    }
+
+    return newImageData;
+  }
 }
