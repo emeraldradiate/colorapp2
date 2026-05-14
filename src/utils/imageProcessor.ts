@@ -385,46 +385,103 @@ export class ImageProcessor {
   }
 
   /**
-   * Build a 1:1 color mapping from image colors to palette colors based on luminance.
-   * Each image color maps to the palette color with the closest luminance value,
-   * ensuring no palette color is reused (1:1 mapping).
+   * Build a 1:1 color mapping from image colors to palette colors using perceived luminance.
+   * The colors are sorted by luminance and assigned with an order-preserving minimum-cost match,
+   * which avoids greedy early matches from distorting the remaining contrast range.
    */
   private buildLuminanceMapping(imageColors: RGB[], palette: RGB[]): Map<string, RGB> {
-    const lumOf = (c: RGB) => this.rgbToGrayscale(c);
+    const sourceColors = imageColors
+      .map((color, index) => ({
+        color,
+        index,
+        luminance: this.getPerceivedLuminance(color),
+        key: `${color.r},${color.g},${color.b}`,
+      }))
+      .sort((a, b) => a.luminance - b.luminance || a.index - b.index);
 
-    // Calculate luminance for all palette colors
-    const paletteWithLum = palette.map((color, index) => ({
-      color,
-      lum: lumOf(color),
-      index
-    }));
+    const paletteColors = palette
+      .map((color, index) => ({
+        color,
+        index,
+        luminance: this.getPerceivedLuminance(color),
+      }))
+      .sort((a, b) => a.luminance - b.luminance || a.index - b.index);
 
-    const usedIndices = new Set<number>();
-    const colorMap = new Map<string, RGB>();
+    const sourceCount = sourceColors.length;
+    const paletteCount = paletteColors.length;
 
-    // For each image color, find the closest available palette color by luminance
-    for (const imgColor of imageColors) {
-      const imgLum = lumOf(imgColor);
-      let bestIdx = -1;
-      let bestDist = Infinity;
+    if (sourceCount === 0 || paletteCount === 0) {
+      return new Map();
+    }
 
-      for (let i = 0; i < paletteWithLum.length; i++) {
-        if (usedIndices.has(i)) continue;
-        const dist = Math.abs(paletteWithLum[i].lum - imgLum);
-        if (dist < bestDist) {
-          bestDist = dist;
-          bestIdx = i;
+    const dp: number[][] = Array.from({ length: sourceCount + 1 }, () =>
+      Array(paletteCount + 1).fill(Infinity)
+    );
+    const take: boolean[][] = Array.from({ length: sourceCount + 1 }, () =>
+      Array(paletteCount + 1).fill(false)
+    );
+
+    for (let j = 0; j <= paletteCount; j++) {
+      dp[0][j] = 0;
+    }
+
+    for (let i = 1; i <= sourceCount; i++) {
+      for (let j = 1; j <= paletteCount; j++) {
+        const skipCost = dp[i][j - 1];
+        const matchCost =
+          dp[i - 1][j - 1] + Math.abs(sourceColors[i - 1].luminance - paletteColors[j - 1].luminance);
+
+        if (matchCost <= skipCost) {
+          dp[i][j] = matchCost;
+          take[i][j] = true;
+        } else {
+          dp[i][j] = skipCost;
         }
-      }
-
-      if (bestIdx !== -1) {
-        usedIndices.add(bestIdx);
-        const key = `${imgColor.r},${imgColor.g},${imgColor.b}`;
-        colorMap.set(key, paletteWithLum[bestIdx].color);
       }
     }
 
+    const assignedPaletteColors: RGB[] = new Array(sourceCount);
+    let i = sourceCount;
+    let j = paletteCount;
+
+    while (i > 0 && j > 0) {
+      if (!take[i][j]) {
+        j--;
+        continue;
+      }
+
+      assignedPaletteColors[i - 1] = paletteColors[j - 1].color;
+      i--;
+      j--;
+    }
+
+    const colorMap = new Map<string, RGB>();
+    sourceColors.forEach((sourceColor, index) => {
+      const mappedColor = assignedPaletteColors[index];
+      if (mappedColor) {
+        colorMap.set(sourceColor.key, mappedColor);
+      }
+    });
+
     return colorMap;
+  }
+
+  /**
+   * Calculate perceived luminance on a 0-255 scale using linearized sRGB.
+   */
+  private getPerceivedLuminance(color: RGB): number {
+    const toLinear = (channel: number): number => {
+      const normalized = channel / 255;
+      return normalized <= 0.04045
+        ? normalized / 12.92
+        : Math.pow((normalized + 0.055) / 1.055, 2.4);
+    };
+
+    const red = toLinear(color.r);
+    const green = toLinear(color.g);
+    const blue = toLinear(color.b);
+
+    return (0.2126 * red + 0.7152 * green + 0.0722 * blue) * 255;
   }
 
   /**
@@ -445,7 +502,7 @@ export class ImageProcessor {
     const uniqueColors = this.getUniqueColors(originalImageData);
 
     // If image has fewer (or equal) unique colors than the palette,
-    // use luminance-based 1:1 mapping for a cleaner result
+    // use a contrast-preserving 1:1 luminance match instead of nearest-color remapping.
     if (uniqueColors.length > 0 && uniqueColors.length <= newPalette.length) {
       const colorMap = this.buildLuminanceMapping(uniqueColors, newPalette);
 
